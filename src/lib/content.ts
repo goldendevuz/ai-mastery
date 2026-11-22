@@ -1,24 +1,36 @@
 import GithubSlugger from 'github-slugger'
 import { modules, type Module } from '../data/curriculum'
 
-const files = import.meta.glob('../content/**/*.md', {
-  query: '?raw',
-  import: 'default',
-}) as Record<string, () => Promise<string>>
+import published from 'virtual:published-lessons'
+import { getToken } from './auth'
 
-const key = (moduleSlug: string, topicSlug: string) => `../content/${moduleSlug}/${topicSlug}.md`
+const publishedIds = new Set(published)
 
 export const ASSESSMENT = 'assessment'
 
-export const isPublished = (moduleSlug: string, topicSlug: string) => key(moduleSlug, topicSlug) in files
+export const isPublished = (moduleSlug: string, topicSlug: string) => publishedIds.has(`${moduleSlug}/${topicSlug}`)
 
 export const modulePublished = (m: Module) => m.topics.some((t) => isPublished(m.slug, t.slug))
 
 export const hasAssessment = (m: Module) => isPublished(m.slug, ASSESSMENT)
 
-export function loadLesson(moduleSlug: string, topicSlug: string): Promise<string> {
-  const loader = files[key(moduleSlug, topicSlug)]
-  return loader ? loader() : Promise.reject(new Error('Lesson not found'))
+export class LessonError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/** Fetch lesson markdown from the backend; it enforces login + teacher-managed access. */
+export async function loadLesson(moduleSlug: string, topicSlug: string): Promise<string> {
+  const token = getToken()
+  const res = await fetch(`/api/lessons/${moduleSlug}/${topicSlug}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) throw new LessonError(res.status, 'Lesson unavailable')
+  return res.text()
 }
 
 export const lessonId = (moduleSlug: string, topicSlug: string) => `${moduleSlug}/${topicSlug}`

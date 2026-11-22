@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router'
 import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronRight, Clock, NotebookPen } from 'lucide-react'
 import Markdown from '../components/Markdown'
 import { findModule, pad, phaseOf } from '../data/curriculum'
-import { ASSESSMENT, extractHeadings, lessons, loadLesson, moduleLessons, readingMinutes, type Heading } from '../lib/content'
+import { ASSESSMENT, LessonError, extractHeadings, lessons, loadLesson, moduleLessons, readingMinutes, type Heading } from '../lib/content'
 import { actions, useStore } from '../lib/store'
+import { useAuth } from '../lib/auth'
 import NotFound from './NotFound'
 
 export default function LessonPage() {
@@ -12,24 +13,35 @@ export default function LessonPage() {
   const index = lessons.findIndex((l) => l.module.slug === moduleSlug && l.slug === topicSlug)
   const lesson = lessons[index]
   const [loaded, setLoaded] = useState<{ id: string; source: string } | null>(null)
+  const [failed, setFailed] = useState<{ id: string; status: number } | null>(null)
+  const auth = useAuth()
   const { done, bookmarks } = useStore()
 
   useEffect(() => {
     if (!lesson) return
     let cancelled = false
     actions.setLast(lesson.id)
-    loadLesson(lesson.module.slug, lesson.slug).then((source) => {
-      if (!cancelled) setLoaded({ id: lesson.id, source })
-    })
+    if (!auth.ready) return
+    setFailed(null)
+    loadLesson(lesson.module.slug, lesson.slug)
+      .then((source) => {
+        if (!cancelled) setLoaded({ id: lesson.id, source })
+      })
+      .catch((e) => {
+        if (!cancelled) setFailed({ id: lesson.id, status: e instanceof LessonError ? e.status : 0 })
+      })
     return () => {
       cancelled = true
     }
-  }, [lesson])
+  }, [lesson, auth.ready, auth.user, auth.unlocked])
 
   const source = loaded && lesson && loaded.id === lesson.id ? loaded.source : null
   const headings = useMemo(() => (source ? extractHeadings(source) : []), [source])
 
   if (!lesson) return findModule(moduleSlug) ? <Unpublished moduleSlug={moduleSlug} /> : <NotFound />
+
+  if (failed && failed.id === lesson.id && failed.status !== 0)
+    return <Locked moduleSlug={moduleSlug} status={failed.status} />
 
   const m = lesson.module
   const phase = phaseOf(m)
@@ -236,6 +248,35 @@ function Unpublished({ moduleSlug }: { moduleSlug: string }) {
       <Link to={`/learn/${moduleSlug}`} className="mt-6 inline-block font-medium text-accent hover:underline">
         Back to the module
       </Link>
+    </div>
+  )
+}
+
+function Locked({ moduleSlug, status }: { moduleSlug: string; status: number }) {
+  const loginNeeded = status === 401
+  return (
+    <div className="mx-auto max-w-xl px-5 py-24 text-center">
+      <h1 className="font-serif text-3xl font-medium">
+        {loginNeeded ? 'Log in to read this lesson' : "This lesson isn't open yet"}
+      </h1>
+      <p className="mt-3 text-muted">
+        {loginNeeded
+          ? 'Create a free student account or log in to access the lessons your teacher has opened.'
+          : 'Your teacher has not opened this lesson yet. It will appear here once it is available.'}
+      </p>
+      {loginNeeded ? (
+        <Link
+          to="/login"
+          state={{ from: location.pathname }}
+          className="mt-6 inline-block font-medium text-accent hover:underline"
+        >
+          Log in or sign up
+        </Link>
+      ) : (
+        <Link to={`/learn/${moduleSlug}`} className="mt-6 inline-block font-medium text-accent hover:underline">
+          Back to the module
+        </Link>
+      )}
     </div>
   )
 }

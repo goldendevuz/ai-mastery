@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { CornerDownLeft, Search } from 'lucide-react'
 import { modules, pad } from '../data/curriculum'
+import { useAuth } from '../lib/auth'
 import { isPublished, lessons, loadLesson, searchableText } from '../lib/content'
 
 interface Entry {
@@ -25,11 +26,18 @@ const base: Entry[] = modules.flatMap((m) => [
   }),
 ])
 
-let bodies: Promise<Record<string, string>> | null = null
-const loadBodies = () =>
-  (bodies ??= Promise.all(
-    lessons.map(async (l) => [l.path, searchableText(await loadLesson(l.module.slug, l.slug)).toLowerCase()] as const),
-  ).then(Object.fromEntries))
+// Full-text search only covers lessons the user is allowed to read.
+const bodyCache = new Map<string, Promise<string>>()
+const loadBodies = (unlocked: Set<string>) =>
+  Promise.all(
+    lessons
+      .filter((l) => unlocked.has(l.id))
+      .map(async (l) => {
+        let p = bodyCache.get(l.id)
+        if (!p) bodyCache.set(l.id, (p = loadLesson(l.module.slug, l.slug).then((t) => searchableText(t).toLowerCase())))
+        return [l.path, await p.catch(() => '')] as const
+      }),
+  ).then(Object.fromEntries as (e: (readonly [string, string])[]) => Record<string, string>)
 
 interface Hit extends Entry {
   snippet?: string
@@ -76,9 +84,10 @@ export default function SearchDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()
   const listRef = useRef<HTMLUListElement>(null)
 
+  const { unlocked } = useAuth()
   useEffect(() => {
-    loadBodies().then(setText)
-  }, [])
+    loadBodies(unlocked).then(setText)
+  }, [unlocked])
 
   const hits = useMemo(() => search(q, text), [q, text])
 

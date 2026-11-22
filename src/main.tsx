@@ -7,6 +7,9 @@ import '@fontsource-variable/jetbrains-mono'
 import 'katex/dist/katex.min.css'
 import './index.css'
 import App from './App'
+import { refreshAuth } from './lib/auth'
+
+refreshAuth()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

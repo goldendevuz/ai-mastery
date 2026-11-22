@@ -5,11 +5,13 @@ import Sidebar from './Sidebar'
 import SearchDialog from './SearchDialog'
 import Logo from './Logo'
 import { toggleTheme, useTheme } from '../lib/store'
+import { logout, useAuth } from '../lib/auth'
 
 export default function Layout() {
   const [drawer, setDrawer] = useState(false)
   const [search, setSearch] = useState(false)
   const theme = useTheme()
+  const { ready, user } = useAuth()
   const location = useLocation()
 
   useEffect(() => {
@@ -84,6 +86,21 @@ export default function Layout() {
             <Link to="/library" className="rounded-md px-3 py-1.5 text-muted hover:bg-sunken hover:text-fg">
               My library
             </Link>
+            {user?.role === 'teacher' && (
+              <Link to="/teacher" className="rounded-md px-3 py-1.5 text-muted hover:bg-sunken hover:text-fg">
+                Teacher panel
+              </Link>
+            )}
+            {ready &&
+              (user ? (
+                <button onClick={logout} title={user.email} className="rounded-md px-3 py-1.5 text-muted hover:bg-sunken hover:text-fg">
+                  Log out ({user.name})
+                </button>
+              ) : (
+                <Link to="/login" className="rounded-md px-3 py-1.5 font-medium text-accent hover:bg-sunken">
+                  Log in
+                </Link>
+              ))}
           </nav>
           <button
             onClick={toggleTheme}

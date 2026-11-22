@@ -6,6 +6,8 @@ import ModulePage from './pages/ModulePage'
 import Roadmap from './pages/Roadmap'
 import Library from './pages/Library'
 import NotFound from './pages/NotFound'
+import Login from './pages/Login'
+import Teacher from './pages/Teacher'
 
 const LessonPage = lazy(() => import('./pages/LessonPage'))
 
@@ -18,6 +20,9 @@ export default function App() {
         <Route path="library" element={<Library />} />
         <Route path="learn/:moduleSlug" element={<ModulePage />} />
         <Route path="learn/:moduleSlug/:topicSlug" element={<Suspense fallback={null}><LessonPage /></Suspense>} />
+        <Route path="login" element={<Login mode="login" />} />
+        <Route path="register" element={<Login mode="register" />} />
+        <Route path="teacher" element={<Teacher />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

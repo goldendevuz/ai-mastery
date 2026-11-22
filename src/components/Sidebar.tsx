@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useParams } from 'react-router'
-import { Bookmark, Check, ChevronRight, Home, Map } from 'lucide-react'
+import { Bookmark, Check, ChevronRight, Home, Lock, Map } from 'lucide-react'
 import Logo from './Logo'
 import { pad, phases, type Module } from '../data/curriculum'
 import { ASSESSMENT, hasAssessment, isPublished, lessonId, modulePublished, moduleLessons } from '../lib/content'
 import { useStore } from '../lib/store'
+import { useAuth } from '../lib/auth'
 
 const navItem = ({ isActive }: { isActive: boolean }) =>
   `flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors ${
@@ -68,6 +69,7 @@ export default function Sidebar() {
 function ModuleItem({ module: m, open, onToggle }: { module: Module; open: boolean; onToggle: () => void }) {
   const { moduleSlug, topicSlug } = useParams()
   const { done } = useStore()
+  const { unlocked } = useAuth()
   const active = moduleSlug === m.slug
   const published = modulePublished(m)
   const activeRef = useRef<HTMLAnchorElement>(null)
@@ -140,6 +142,7 @@ function ModuleItem({ module: m, open, onToggle }: { module: Module; open: boole
                 >
                   {isActive && <span className="absolute -left-[11.5px] top-1 h-5 w-px bg-accent" />}
                   <span className="flex-1">{t.title}</span>
+                  {!unlocked.has(lessonId(m.slug, t.slug)) && <Lock size={11} className="mt-1 shrink-0 text-faint" />}
                   {isDone && <Check size={13} className="mt-0.5 shrink-0 text-accent" />}
                 </Link>
               </li>
