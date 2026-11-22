@@ -24,7 +24,6 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTENT = ROOT / "content"
 DIST = ROOT / "dist"
 DB_PATH = Path(os.environ.get("DB_PATH", ROOT / "backend" / "data" / "app.db"))
-TEACHER_EMAILS = {e.strip().lower() for e in os.environ.get("TEACHER_EMAILS", "").split(",") if e.strip()}
 TOKEN_TTL = 60 * 60 * 24 * 14
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -70,8 +69,6 @@ def init_db() -> None:
             );
             """
         )
-        for email in TEACHER_EMAILS:
-            con.execute("UPDATE users SET role='teacher' WHERE email=?", (email,))
 
 
 def all_lesson_ids() -> list[str]:
@@ -145,7 +142,7 @@ class Login(BaseModel):
 @app.post("/api/auth/register")
 def register(body: Register):
     email = body.email.strip().lower()
-    role = "teacher" if email in TEACHER_EMAILS else "student"  # everyone else is a student
+    role = "student"  # registration always creates a student; teachers are promoted via `python -m app.cli`
     try:
         with closing(db()) as con, con:
             cur = con.execute(

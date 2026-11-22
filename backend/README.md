@@ -7,10 +7,10 @@ Lesson markdown lives in `../content` and is only readable through `GET /api/les
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 npm run build                       # builds ../dist
-TEACHER_EMAILS=you@example.com .venv/bin/uvicorn app.main:app --port 8097
+DB_PATH=... .venv/bin/uvicorn app.main:app --port 8097
 ```
 
-- Everyone who registers is a **student**; emails in `TEACHER_EMAILS` (comma-separated) become **teacher**.
+- Everyone who registers is a **student**. Promote a teacher after they register: `.venv/bin/python -m app.cli teacher you@example.com` (no email-based auto-promotion, so nobody can claim the role by registering first).
 - Teachers open/close lessons at `/teacher`. Access is global for now (`lesson_access` table); per-student access can be added later.
-- Env: `TEACHER_EMAILS`, `JWT_SECRET` (auto-generated into `data/.jwt_secret` if unset), `DB_PATH` (default `backend/data/app.db`).
+- Env: `JWT_SECRET` (auto-generated into `data/.jwt_secret` if unset), `DB_PATH` (default `backend/data/app.db`).
 - Dev: `uvicorn app.main:app --port 8000` + `npm run dev` (Vite proxies `/api`).
