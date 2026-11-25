@@ -2,7 +2,7 @@
 
 Lesson markdown lives in ../content and is NEVER served statically; the only way
 to read it is GET /api/lessons/{module}/{topic}, which checks the caller's role
-and the teacher-managed lesson_access table.
+and the teacher-managed per-student student_access table.
 """
 import hashlib
 import hmac
@@ -62,13 +62,21 @@ def init_db() -> None:
               role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student','teacher')),
               created_at INTEGER NOT NULL
             );
-            -- Global access list (applies to every student for now).
-            -- Per-student access can be added later as a separate table.
-            CREATE TABLE IF NOT EXISTS lesson_access (
-              lesson_id TEXT PRIMARY KEY
+            -- Lessons a teacher has opened, per student. No row = closed.
+            CREATE TABLE IF NOT EXISTS student_access (
+              user_id INTEGER NOT NULL,
+              lesson_id TEXT NOT NULL,
+              PRIMARY KEY (user_id, lesson_id)
             );
             """
         )
+        # One-time migration from the old global list: existing students keep what they had.
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='lesson_access'").fetchone():
+            con.execute(
+                "INSERT OR IGNORE INTO student_access (user_id, lesson_id) "
+                "SELECT u.id, a.lesson_id FROM users u CROSS JOIN lesson_access a WHERE u.role='student'"
+            )
+            con.execute("DROP TABLE lesson_access")
 
 
 def all_lesson_ids() -> list[str]:
@@ -116,11 +124,15 @@ def public_user(u: sqlite3.Row) -> dict:
     return {"id": u["id"], "email": u["email"], "name": u["name"], "role": u["role"]}
 
 
+def opened_for(con: sqlite3.Connection, user_id: int) -> set[str]:
+    return {r[0] for r in con.execute("SELECT lesson_id FROM student_access WHERE user_id=?", (user_id,))}
+
+
 def unlocked_ids(user: sqlite3.Row) -> list[str]:
     if user["role"] == "teacher":
         return all_lesson_ids()
     with closing(db()) as con:
-        opened = {r[0] for r in con.execute("SELECT lesson_id FROM lesson_access")}
+        opened = opened_for(con, user["id"])
     return [i for i in all_lesson_ids() if i in opened]
 
 
@@ -183,6 +195,7 @@ def lesson(module: str, topic: str, user: sqlite3.Row = Depends(current_user)):
 
 
 class Toggle(BaseModel):
+    student_id: int
     lesson_ids: list[str]
     open: bool
 
@@ -190,25 +203,27 @@ class Toggle(BaseModel):
 @app.get("/api/admin/access")
 def admin_access(_: sqlite3.Row = Depends(teacher_only)):
     with closing(db()) as con:
-        opened = [r[0] for r in con.execute("SELECT lesson_id FROM lesson_access")]
+        rows = con.execute("SELECT * FROM users WHERE role='student' ORDER BY created_at DESC, id DESC").fetchall()
         students = [
-            {"id": r["id"], "name": r["name"], "email": r["email"], "role": r["role"]}
-            for r in con.execute("SELECT * FROM users ORDER BY created_at DESC")
+            {"id": r["id"], "name": r["name"], "email": r["email"], "open": sorted(opened_for(con, r["id"]))}
+            for r in rows
         ]
-    return {"open": opened, "students": students}
+    return {"students": students}
 
 
 @app.put("/api/admin/access")
 def admin_set_access(body: Toggle, _: sqlite3.Row = Depends(teacher_only)):
     valid = set(all_lesson_ids())
-    ids = [i for i in body.lesson_ids if i in valid]
+    rows = [(body.student_id, i) for i in body.lesson_ids if i in valid]
     with closing(db()) as con, con:
+        if not con.execute("SELECT 1 FROM users WHERE id=? AND role='student'", (body.student_id,)).fetchone():
+            raise HTTPException(404, "Student not found")
         if body.open:
-            con.executemany("INSERT OR IGNORE INTO lesson_access (lesson_id) VALUES (?)", [(i,) for i in ids])
+            con.executemany("INSERT OR IGNORE INTO student_access (user_id, lesson_id) VALUES (?,?)", rows)
         else:
-            con.executemany("DELETE FROM lesson_access WHERE lesson_id=?", [(i,) for i in ids])
-        opened = [r[0] for r in con.execute("SELECT lesson_id FROM lesson_access")]
-    return {"open": opened}
+            con.executemany("DELETE FROM student_access WHERE user_id=? AND lesson_id=?", rows)
+        opened = sorted(opened_for(con, body.student_id))
+    return {"student_id": body.student_id, "open": opened}
 
 
 @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
